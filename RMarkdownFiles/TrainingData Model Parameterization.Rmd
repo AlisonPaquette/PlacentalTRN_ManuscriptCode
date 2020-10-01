@@ -1,0 +1,532 @@
+---
+title: "TrainingData-Model Parameterization"
+author: "Alison Paquette"
+date Written: "September 2019"
+date Modified: "6/20/2020"
+date RMarkdown Created: "9/23/2020"
+output: html_document
+---
+
+#### B. Load Data ####
+```{r}
+library(foreach)
+library(doParallel)
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/NoEnhancerCorrelationsTrainingData.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/EnhancerCorrelationsTrainingData.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/TrainingDataset_6192020.RData")
+```
+
+Set up a blank database to insert the model parameters into
+```{r}
+
+ModelDimensions = data.frame(matrix(vector(), 9, 5, dimnames=list(c(), c("NInteractions","TFs","TGs","MedianModuleSize","BiggestModule"))),stringsAsFactors=F)
+rownames(ModelDimensions)<-c("Model1","Model2","Model3","Model4","Model5","Model6","Model7","Model8","Model9")
+```
+
+
+#### Model 2 
+Use Median Correlation Cutoff; No Enhancers
+```{r}
+Mean<-median((abs(NoEnhancer_Cor$Cor)))
+Cutoffs<-c((-Mean),Mean)
+Model2<-subset(NoEnhancer_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+Model2<-subset(Model2,Rank<16)
+hist(NoEnhancer_Cor$Cor,breaks=100)
+hist(Model2$Cor,breaks=100)
+
+TGs<-as.data.frame(table(Model2$Target_Gene)) 
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+TGs<-subset(TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+TFs<-as.data.frame(table(Model2$TF))
+colnames(TFs)<-c("TF","N_Targets")
+rownames(TFs)<-TFs$TF
+
+
+TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TFsList[[i]] <- Model2[Model2$Target_Gene==rownames(TGs)[i],]$TF
+}
+names(TFsList) <-TGs$Target
+
+ModelDimensions[2,]<-c(dim(Model2)[1], #N Interactoins
+                       length(unique(as.character(Model2$TF))), #Number of TFs
+                       dim(TGs)[1], #Number of TGs
+                       median(TFs$N_Targets), #Median Number of TGs
+                       max(TFs$N_Targets)) # Maximum Module Size
+
+#save(Model2,TFsList,TGs,file="~/PlacentalTRN/IntermediateData/TrainingDataModel2_Full.RData")
+
+```
+
+#### Model 1 
+** BASE MODEL **
+Use median correlation cutoff, and Enhancers.
+```{r}
+Mean<-median((abs(Enhancer_Cor$Cor)))
+Cutoffs<-c((-Mean),Mean)
+Model1<-subset(Enhancer_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+Model1<-subset(Model1,Rank<16)
+hist(Enhancer_Cor$Cor,breaks=100)
+hist(Model1$Cor,breaks=100)
+
+TGs<-as.data.frame(table(Model1$Target_Gene))    
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+TGs<-subset(TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TFsList[[i]] <- Model1[Model1$Target_Gene==rownames(TGs)[i],]$TF
+}
+names(TFsList) <-TGs$Target
+
+ModelDimensions[1,]<-c(dim(Model1)[1], #N Interactoins
+                       length(unique(as.character(Model1$TF))), #Number of TFs
+                       dim(TGs)[1], #Number of TGs
+                       median(TFs$N_Targets), #Median Number of TGs
+                       max(TFs$N_Targets)) # Maximum Module Size
+
+save(Model1,TFsList,TGs,file="~/PlacentalTRN/IntermediateData/TrainingDataModel1_Full.RData")
+
+
+```
+
+#### Model 3
+Use correlation cutoff of 0.25, 15 Tfs max, and enhancers
+```{r}
+Cutoffs<-c((-0.25),0.25)
+
+Model3<-subset(Enhancer_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+Model3<-subset(Model3,Rank<16)
+hist(Enhancer_Cor$Cor,breaks=100)
+hist(Model3$Cor,breaks=100)
+
+
+
+TGs<-as.data.frame(table(Model3$Target_Gene))
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+TGs<-subset(TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+TFs<-as.data.frame(table(Model3$TF))
+colnames(TFs)<-c("TF","N_Targets")
+rownames(TFs)<-TFs$TF
+
+TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TFsList[[i]] <- Model3[Model3$Target_Gene==rownames(TGs)[i],]$TF
+}
+names(TFsList) <-TGs$Target
+
+ModelDimensions[3,]<-c(dim(Model3)[1], #N Interactoins
+                       length(unique(as.character(Model3$TF))), #Number of TFs
+                       dim(TGs)[1], #Number of TGs
+                       median(TFs$N_Targets), #Median Number of TGs
+                       max(TFs$N_Targets)) # Maximum Module Size
+
+#save(Model3,TFsList,TGs,file="~/PlacentalTRN/IntermediateData/TrainingDataModel3_Full.RData")
+```
+
+
+
+#######___Model 4 ############
+Use a correlation cutoff of 0.5, only 15 TFs and Enhancers
+```{r}
+Cutoffs<-c((-0.5),0.5)
+Model4<-subset(Enhancer_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+Model4<-subset(Model4,Rank<16)
+
+hist(Enhancer_Cor$Cor,breaks=100)
+hist(Model4$Cor,breaks=100)
+
+TGs<-as.data.frame(table(Model4$Target_Gene))
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+TGs<-subset(TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+TFs<-as.data.frame(table(Model4$TF))
+colnames(TFs)<-c("TF","N_Targets")
+rownames(TFs)<-TFs$TF
+
+
+TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TFsList[[i]] <- Model4[Model4$Target_Gene==rownames(TGs)[i],]$TF
+}
+names(TFsList) <-TGs$Target
+
+ModelDimensions[4,]<-c(dim(Model4)[1], #N Interactoins
+                       length(unique(as.character(Model4$TF))), #Number of TFs
+                       dim(TGs)[1], #Number of TGs
+                       median(TFs$N_Targets), #Median Number of TGs
+                       max(TFs$N_Targets)) # Maximum Module Size
+
+#save(Model4,TFsList,TGs,file="~/PlacentalTRN/IntermediateData/TrainingDataModel4_Full.RData")
+
+
+```
+
+#### Model 
+Use only top 10 TFs instead of 15. still only > median correlation cutoff and enhnacers
+
+```{r}
+ean<-mean((abs(Enhancer_Cor$Cor)))
+Cutoffs<-c((-Mean),Mean)
+Model5<-subset(Enhancer_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+Model5<-subset(Model5,Rank<11)
+
+TFs<-as.data.frame(table(Model5$TF))
+colnames(TFs)<-c("TF","N_Targets")
+rownames(TFs)<-TFs$TF
+
+
+hist(Enhancer_Cor$Cor,breaks=100)
+hist(Model5$Cor,breaks=100)
+
+TGs<-as.data.frame(table(Model5$Target_Gene))     
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+TGs<-subset(TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TFsList[[i]] <- Model5[Model5$Target_Gene==rownames(TGs)[i],]$TF
+}
+names(TFsList) <-TGs$Target
+
+ModelDimensions[5,]<-c(dim(Model5)[1], #N Interactoins
+                       length(unique(as.character(Model5$TF))), #Number of TFs
+                       dim(TGs)[1], #Number of TGs
+                       median(TFs$N_Targets), #Median Number of TGs
+                       max(TFs$N_Targets)) # Maximum Module Size
+
+#save(Model5,TFsList,TGs,file="~/PlacentalTRN/IntermediateData/TrainingDataModel5_Full.RData")
+
+```
+
+#### Model 6
+```{r}
+ean<-median((abs(Enhancer_Cor$Cor)))
+Cutoffs<-c((-Mean),Mean)
+Model6<-subset(Enhancer_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+Model6<-subset(Model6,Rank<11)
+
+TFs<-as.data.frame(table(Model6$TF))
+colnames(TFs)<-c("TF","N_Targets")
+rownames(TFs)<-TFs$TF
+
+
+hist(Enhancer_Cor$Cor,breaks=100)
+hist(Model6$Cor,breaks=100)
+
+TGs<-as.data.frame(table(Model6$Target_Gene))
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+TGs<-subset(TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TFsList[[i]] <- Model6[Model6$Target_Gene==rownames(TGs)[i],]$TF
+}
+names(TFsList) <-TGs$Target
+
+ModelDimensions[6,]<-c(dim(Model6)[1], #N Interactoins
+                       length(unique(as.character(Model6$TF))), #Number of TFs
+                       dim(TGs)[1], #Number of TGs
+                       median(TFs$N_Targets), #Median Number of TGs
+                       max(TFs$N_Targets)) # Maximum Module Size
+
+#save(Model6,TFsList,TGs,file="~/PlacentalTRN/IntermediateData/TrainingDataModel6_Full.RData")
+
+
+```
+
+
+
+#######BAD MODELS  ############
+
+We also included some false models in our database which had no binding sites for TFs for each gene and/or poor correlations.  
+
+
+1. make Fake & Real Data Matrix: Note We wanna be using the same thing for all models so it s easier to run on server 
+```{r}
+TGs<-as.data.frame(table(Enhancer_Cor$Target_Gene))
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+TGs<-subset(TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+TFs<-as.data.frame(table(Enhancer_Cor$TF))
+colnames(TFs)<-c("TF","N_Targets")
+TFs$TF<-as.character(TFs$TF)
+
+
+TFsList_Real<- list()
+TFsList_Fake<- list()
+for(i in 1: nrow(TGs)){
+  TFsList_Real[[i]]<-Enhancer_Cor[Enhancer_Cor$Target_Gene==rownames(TGs)[i],]$TF
+  TFsList_Fake[[i]]<-setdiff(TFs$TF,TFsList_Real[[i]])
+}
+names(TFsList_Real) <- as.character(TGs$Target)
+names(TFsList_Fake) <- as.character(TGs$Target)
+
+
+#save(TFsList_Fake,TFsList_Real,file="~/PlacentalTRN/IntermediateData/EnhancerModels_FakeandRealMatchedTFs.RData")
+
+Corr_Results<- function(Exprs_Train,TargetGene,TFs_Fake){
+  Corr<-data.frame(matrix(NA,nrow=length(TFs_Fake),ncol=1))
+  for (i in 1:length(TFs_Fake)){
+    Corr[i,1]<-cor.test(as.numeric(Exprs_Train[TargetGene,]),as.numeric(Exprs_Train[TFs_Fake[i],]))$estimate
+  }
+  Corr$Target_Gene<-TargetGene
+  Corr$TF<-TFs_Fake
+  Corr
+}
+
+
+NCores=4
+cl <- makeCluster(NCores) #not to overload your computer
+registerDoParallel(cl)
+
+# Parellelized Code
+Fake_Cor<- foreach(j=1:length(rownames(TGs)), .combine=rbind,.errorhandling='remove') %dopar% {
+  tempMatrix = Corr_Results(Exprs_Train,names(TFsList_Fake)[j],TFsList_Fake[[j]]) #calling a function
+  tempMatrix #Equivalent to finalMatrix = cbind(finalMatrix, tempMatrix)
+}
+
+colnames(Fake_Cor)[1]<-"Cor"
+
+
+Fake_Cor<-subset(Fake_Cor,Cor<0.99999) #This gets rid of auto correlatoins
+####
+#save(Fake_Cor,file="~/PlacentalTRN/IntermediateData/FakeCorrelations_TrainingData.RData")
+
+```
+
+#  We need to plot this data to make sure the cutoffs are correct
+
+```{r}
+p3 <- hist(abs(Enhancer_Cor$Cor),breaks=40)                   # centered at 4
+p4 <- hist(abs(Fake_Cor$Cor), breaks=40)                  # centered at 6
+plot( p3, col="orange", xlim=c(0,1),main="Absolute Value: Pearson Correlation Coefficents")  # first histogram
+plot( p4, col="blue", xlim=c(0,1),add=T)  # second
+mean_Real<-mean(abs(Enhancer_Cor$Cor))
+mean_Fake<-mean(abs(Fake_Cor$Cor))
+abline(v=mean_Real,col="orange",lwd=2,lty=2)
+abline(v=mean_Fake,col="blue",lwd=2,lty=2)
+
+t.test(abs(Enhancer_Cor$Cor),abs(Fake_Cor$Cor))
+```
+
+#### Bad Model 7: Real Binding, Bad correlations #########
+
+```{r}
+Mean<-median((abs(Enhancer_Cor$Cor)))
+Cutoffs<-c((-Mean),Mean)
+Real_BadCors<-subset(Enhancer_Cor,Cor<Cutoffs[2])
+Real_BadCors<-subset(Real_BadCors,Cor>Cutoffs[1])
+
+
+Mean<-median((abs(Enhancer_Cor$Cor)))
+Cutoffs<-c((-Mean),Mean)
+Real_BadCors<-subset(Enhancer_Cor,Cor<Cutoffs[2])
+Real_BadCors<-subset(Real_BadCors,Cor>Cutoffs[1])
+
+
+TGs<-as.data.frame(table(Enhancer_Cor$Target_Gene))    
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+#TGs<-subset(TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+FakeOptions<-unique(Real_BadCors$Target_Gene)
+colnames(Real_BadCors)[1]<-"tf"
+NoMatches<-setdiff(as.character(TGs$Target),FakeOptions)
+
+TGs<-TGs[intersect(as.character(TGs$Target),FakeOptions),]
+
+
+BAD_TFsList<- list() #Randomly Sample TFs with the same number as the target genes
+for(i in 1: nrow(TGs)){
+  TG<-as.character(TGs$Target[i])
+  Options<-Real_BadCors[Real_BadCors$Target_Gene==as.character(TGs[i,]$Target),]
+  
+  if(length(Options$TF)<=(TGs[i,]$NTFs)){ #If there are less options then the TFs in the original model...
+    BAD_TFsList[[i]] <- Options$TF
+  } else {
+    
+    BAD_TFsList[[i]] <- sample(Options$TF,TGs[i,]$NTFs)
+  }
+  if(length(BAD_TFsList[[i]])<3){
+    BAD_TFsList[[i]]=NULL
+  }
+}
+names(BAD_TFsList) <- as.character(TGs$Target)
+
+
+
+##Randomly sample and make sure no overlaps btween bad and good list. This should fail
+#for(i in 1:5){
+#any<-NA
+#check<-sample(names(TFsList),5)
+#any[i]<-intersect(BAD_TFsList[check[i]],TFsList[check[i]])
+#any
+#}
+
+TFsList<-plyr::compact(BAD_TFsList)
+
+##Note: These all need to be saaved with these names for the downsteram code to work. You needt o chagne the file name itself, bu tnot these names. NEVER CHANGE THESE NAMES
+
+#save(TFsList,TGs,file="~/PlacentalTRN/IntermediateData/TrainingDataModel7_REALBADCORS.RData")
+
+
+```
+
+# Model 8
+Fake Binding Sites but Good correlations
+
+```{r}
+#########################################################
+#### BadModel 8 : Fake Binding, Good correlations #########
+#########################################################
+rm(list = ls())
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/EnhancerModels_FakeandRealMatchedTFs.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/FakeCorrelations_TrainingData.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/TrainingDataModel1_Full.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/EnhancerCorrelationsTrainingData.RData")
+
+
+
+
+Median<-median((abs(Enhancer_Cor$Cor)))
+Cutoffs<-c((-Median),Median)
+Fake_GoodCors<-subset(Fake_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+
+Fake_BadCors<-subset(Fake_Cor,Cor<Cutoffs[2])#| Cor>Cutoff[1])
+Fake_BadCors<-subset(Fake_BadCors,Cor>Cutoffs[1])
+
+
+p3 <- hist(Fake_GoodCors$Cor,breaks=40)                   # centered at 4
+p4 <- hist(Fake_BadCors$Cor, breaks=10)                  # centered at 6
+plot( p4, col="orange", xlim=c(-1,1))  # first histogram
+plot( p3, col="blue", xlim=c(-1,1),add=T)  # second
+
+#should all be "in bounds"
+table(Fake_BadCors$Cor<Cutoffs[1])
+table(Fake_BadCors$Cor>Cutoffs[2])
+
+#Should have equivalent out of bounds in the true and false category
+table(Fake_GoodCors$Cor<Cutoffs[1])
+table(Fake_GoodCors$Cor>Cutoffs[2])
+# First get st up with filtering Criteria
+
+FakeOptions<-unique(Fake_GoodCors$Target_Gene)
+
+NoMatches<-setdiff(as.character(TGs$Target),FakeOptions)
+
+TGs<-TGs[intersect(TGs$Target,FakeOptions),]
+
+
+## NOTE: THIS TAKES A WHILE IF THERE ARE LOTS OF OPTIONS
+BAD_TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TG<-as.character(TGs[i,])
+  Options<-Fake_GoodCors[Fake_GoodCors$Target_Gene==as.character(TGs[i,]$Target),]
+  
+  if(length(Options$TF)<=(TGs[i,]$NTFs)){ #If there are less options then the TFs in the original model...
+    BAD_TFsList[[i]] <- Options$TF #just deal with whatever is available
+  } else {
+    
+    BAD_TFsList[[i]] <- sample(Options$TF,TGs[i,]$NTFs) #If not-> randomly select a copule
+  }
+  if(length(BAD_TFsList[[i]])<3){
+    TFsList[[i]]=NULL
+  }
+}
+
+names(BAD_TFsList) <- TGs$Target
+
+#for(i in 1:5){
+  #any<-NA
+  #check<-sample(names(TFsList),5)
+  #any[i]<-intersect(BAD_TFsList[check[i]],TFsList[check[i]])
+  #any
+#}
+
+TFsList<-plyr::compact(BAD_TFsList)
+
+#(TFsList,TGs,file="~/PlacentalTRN/IntermediateData/TrainingDataModel8_FAKEGOODCORS.RData")
+
+```
+
+# Model 9: no binding sites and bad correlations
+```{r}
+rm(list = ls())
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/EnhancerModels_FakeandRealMatchedTFs.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/FakeCorrelations_TrainingData.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/TrainingDataModel1_Full.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/EnhancerCorrelationsTrainingData.RData")
+
+
+Median<-median((abs(Enhancer_Cor$Cor)))
+Cutoffs<-c((-Median),Median)
+Fake_GoodCors<-subset(Fake_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+
+Fake_BadCors<-subset(Fake_Cor,Cor<Cutoffs[2])#| Cor>Cutoff[1])
+Fake_BadCors<-subset(Fake_BadCors,Cor>Cutoffs[1])
+
+
+p3 <- hist(Fake_GoodCors$Cor,breaks=40)                   # centered at 4
+p4 <- hist(Fake_BadCors$Cor, breaks=10)                  # centered at 6
+plot( p4, col="orange", xlim=c(-1,1))  # first histogram
+plot( p3, col="blue", xlim=c(-1,1),add=T)  # second
+
+#should all be "in bounds"
+table(Fake_BadCors$Cor<Cutoffs[1])
+table(Fake_BadCors$Cor>Cutoffs[2])
+
+#Should have equivalent out of bounds in the true and false category
+table(Fake_GoodCors$Cor<Cutoffs[1])
+table(Fake_GoodCors$Cor>Cutoffs[2])
+# First get st up with filtering Criteria
+
+FakeOptions<-unique(Fake_BadCors$Target_Gene)
+
+NoMatches<-setdiff(as.character(TGs$Target),FakeOptions)
+
+TGs<-TGs[intersect(TGs$Target,FakeOptions),]
+
+#TRNFiltTest_TFs<-as.data.frame(table(TRNFiltTest$tf))
+#colnames(TRNFiltTest_TFs)<-c("TF","N_Targets")
+#rownames(TRNFiltTest_TFs)<-TRNFiltTest_TFs$TF
+
+## NOTE: THIS TAKES A WHILE IF THERE ARE LOTS OF OPTIONS
+BAD_TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TG<-as.character(TGs[i,])
+  Options<-Fake_BadCors[Fake_BadCors$Target_Gene==as.character(TGs[i,]$Target),]
+  
+  if(length(Options$TF)<=(TGs[i,]$NTFs)){ #If there are less options then the TFs in the original model...
+    BAD_TFsList[[i]] <- Options$TF #just deal with whatever is available
+  } else {
+    
+    BAD_TFsList[[i]] <- sample(Options$TF,TGs[i,]$NTFs) #If not-> randomly select a copule
+  }
+  if(length(BAD_TFsList[[i]])<3){
+    TFsList[[i]]=NULL
+  }
+}
+
+names(BAD_TFsList) <- TGs$Target
+
+#for(i in 1:5){
+ # any<-NA
+#  check<-sample(names(TFsList),5)
+ # any[i]<-intersect(BAD_TFsList[check[i]],TFsList[check[i]])
+ # any
+#}
+
+TFsList<-plyr::compact(BAD_TFsList)
+
+#save(TFsList,TGs,file="~/PlacentalTRN/IntermediateData/TrainingDataModel9_FAKEBADCORS.RData")
+```

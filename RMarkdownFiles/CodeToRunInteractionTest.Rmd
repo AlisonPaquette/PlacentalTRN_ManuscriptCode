@@ -1,0 +1,93 @@
+---
+title: "TRNWithFetalSexInteraction"
+author: "Alison Paquette"
+date: "12/2/2019"
+date code finalized: "7/06/2020"
+date rmarkdown: "9/29/2020"
+output: html_document
+---
+# Load Data for Model 
+```{r}
+load("/local/users/apaquett/PlacentalTRN/PreprocessedData/Covar_All_3182019.RData")
+load("~/PlacentalTRN/IntermediateData/ProcessedRNASequencingData6192020.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/GenomeScaleModel6242020.RData")
+```
+
+# Prepare Data
+```{r}
+Covar_all<-Covar_all[colnames(Exprs_all),]
+colnames(Exprs_all)==rownames(Covar_all)
+###Stratify
+Male_Matrix<-as.data.frame(t(Exprs_all[,rownames(subset(Covar_all,Fetal_Sex=="Male"))]))
+Female_Matrix<-as.data.frame(t(Exprs_all[,rownames(subset(Covar_all,Fetal_Sex=="Female"))]))
+FetalSexVar<-Covar_all$Fetal_Sex
+Matrix<-as.data.frame(t(Exprs_all))
+rownames(Matrix)==rownames(Covar_all)
+```
+
+
+# Function to Perform Interaction test
+```{r}
+InteractTest<- function(Matrix,FetalSexVar,Male_Matrix,Female_Matrix,TF,Genes){
+  
+  Interactions_1<-data.frame(matrix(NA,nrow=length(Genes),ncol=5))
+  colnames(Interactions_1)<-c("Estimate_All","P_All","Estimate_Females","Estimate_Males","P_Interaction")
+  
+  for (i in 1:length(Genes)){
+    
+    #Dependent variable on left side, independent variable on the right#
+    #Females
+    LMF<-lm(Female_Matrix[,Genes[i]]~Female_Matrix[,TF])
+    LMF_E<-as.numeric(LMF$coefficients[2])##Obtain Estimate value
+    
+    #Males
+    LMM<-lm(Male_Matrix[,Genes[i]]~Male_Matrix[,TF])
+    LMM_E<-as.numeric(LMM$coefficients[2]) ##Obtain Estimate value
+    
+    
+    ##Test relationship with Sex as an interaction term to see if its different
+    LM<-summary(lm(Matrix[,Genes[i]]~Matrix[,TF]))
+    P_Model<-LM$coefficients[2,4]
+    LM_E<-LM$coefficients[2]
+    
+    LM_Sex<-summary(lm(Matrix[,Genes[i]]~Matrix[,TF]*FetalSexVar))
+    P_Interaction<-LM_Sex$coefficients[4,4]
+    
+    
+    ##Table of interesting Values:
+    Interactions_1[i,]<-c(LM_E,P_Model,LMF_E,LMM_E,P_Interaction)
+  }
+
+  Interactions_1$Target_Gene<-Genes
+  Interactions_1$TF<-rep(TF,length(Genes))
+  Interactions_1
+}
+```
+
+# Run Interaction Test
+I set this up to run on the server but it turns out its actually not even that computationally intensive
+```{r}
+
+library(foreach)
+library(doParallel)
+#setup parallel backend to use many processors
+cores=10
+cl <- makeCluster(cores) #not to overload your computer
+registerDoParallel(cl)
+
+Interactions <- foreach(j=1:length(TG_List), .combine=rbind) %dopar% {
+  #  Interactions <- foreach(j=1:2, .combine=rbind) %dopar% {
+  tempMatrix = InteractTest(Matrix,FetalSexVar,Male_Matrix,Female_Matrix,names(TG_List)[j],TG_List[[j]]) #calling a function
+  tempMatrix #Equivalent to finalMatrix = cbind(finalMatrix, tempMatrix)
+}
+#stop cluster
+stopCluster(cl)
+```
+
+```{r}
+Interactions$Q_interaction<-p.adjust(Interactions$P_Interaction,method="BH",n=length(Interactions$P_Interaction))
+Interactions$Diff_MvF<-Interactions$Estimate_Males-Interactions$Estimate_Females
+
+#save(Interactions,file="~/PlacentalTRN/IntermediateData/FetalSexInteractionTerms.RData")
+```
+

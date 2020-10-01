@@ -1,0 +1,176 @@
+---
+title: "PretermBirthAnalysis"
+author: "Alison Paquette"
+date: "9/30/2020"
+output: html_document
+---
+
+# Load Relevant Data
+-load the TRN as it will be presented in the R shiny app so that we can ensure
+```{r}
+TRNModel<-read.csv("~/PlacentalTRN/FinalResults/TRNForRShinyApp.csv")
+TRNModel<-TRNModel[,-1]
+TRNModel$targetGene<-as.character(TRNModel$targetGene)
+TRNModel$TF<-as.character(TRNModel$TF)
+
+#Load results of miroarray analysis published in BOR Paper
+load("~/PlacentalTRN/PreprocessedData/AggregatedMicroarraySig_BOR2017.RData")
+Microarray_sig$hgnc_symbol<-as.character(Microarray_sig$hgnc_symbol)
+rownames(Microarray_sig)<-as.character(Microarray_sig$hgnc_symbol)
+
+load("~/PlacentalTRN/FinalResults/Node&Edge.RData")
+```
+
+
+# Enrichment Test Function####
+
+Perform Fishers exact test to see if Gene list is enriched for specifif TFs.
+Reference: https://www.pathwaycommons.org/guide/primers/statistics/fishers_exact_test/
+```{r}
+EnrichFisher<-function(NSigGenes,NTotalGenes,SigInGroup,GroupSize){
+
+  a=SigInGroup ## Equivalent to X; Table 3. In the TFgroup and DE
+  b= GroupSize-SigInGroup #. Equivalent to m-X: In the TFGroup but NOT DE
+  c=NSigGenes-SigInGroup  # Equivalent to K-X; DE but not in the group
+  n=NTotalGenes-GroupSize #n in contigencyTable: not in group
+  d=n-c
+  mat<-(matrix(c(a,c,b,d),nrow=2))
+  mat
+  sum(mat)==NTotalGenes
+  fisher.test(mat,alternative="greater")$p.value #default is 2 sided. We need this to be greater rather than less to say that these genes are enriched
+}
+```
+
+# Generate TF Enrichment Table
+-This is basically what the RShiny function is doing
+```{r}
+
+
+
+TFTable<-as.data.frame(table(TRNModel$TF))
+colnames(TFTable)<-c("TF","NTargets")
+rownames(TFTable)<-TFTable$TF
+TFTable$TF<-as.character(TFTable$TF)
+TFTable$SigGenes<-NA
+
+  for(i in 1:dim(TFTable)[1])
+  {
+    x<-subset(TRNModel,TF==as.character(TFTable$TF[i])) # Pull out the TF of interest
+    dim(x)[1]==TFTable$NTargets[i] #This should be equal
+    TFTable$SigGenes[i]<-length(intersect(as.character(x$targetGene),Microarray_sig$hgnc_symbol)) #How many in the input gene list match this TF?
+  }
+
+
+
+  TFTable$FisherTest<-NA
+  # Perform Enrichment Test using Fishers Exact Function
+  for(i in 1:length(TFTable$TF)){
+    TFTable$FisherTest[i]<-EnrichFisher(NSigGenes=as.numeric(length(Microarray_sig$hgnc_symbol)),NTotalGenes=7712,SigInGroup =TFTable$SigGenes[i],GroupSize=TFTable$NTargets[i])
+  }
+
+AllTFTable<-TFTable
+# Filter By Preset Thresholds
+
+MinSigGenes=3
+#ModuleMax
+
+#TFTable<-subset(TFTable,NTargets>=ModuleMin)
+#TFTable<-subset(TFTable,NTargets<ModuleMax)
+TFTable<-subset(TFTable,SigGenes>=MinSigGenes)
+TFTable$FisherAdjustP<-p.adjust(TFTable$FisherTest,method="BH",n=dim(TFTable)[1])
+```
+
+#Pull out Enriched TFs and get calculations for paper
+```{r}
+EnrichedTFs<-subset(TFTable,FisherTest<0.1)$TF
+
+#1. How many total Genes in List?
+GenesIncluded<-NULL
+for(i in 1:length(EnrichedTFs)){
+  TargetGenes<-as.character(subset(TRNModel,TF==EnrichedTFs[i])$targetGene)
+  TargetGenes<-intersect(TargetGenes,Microarray_sig$hgnc_symbol)
+  GenesIncluded<-union(TargetGenes,GenesIncluded)
+}
+
+
+length(GenesIncluded)/length(Microarray_sig$hgnc_symbol)
+
+Table4<-TFTable[EnrichedTFs,]
+
+Table4$Genes<-NA
+
+for(i in 1:length(EnrichedTFs)){
+    TargetGenes<-as.character(subset(TRNModel,TF==EnrichedTFs[i])$targetGene)
+    TargetGenes<-intersect(TargetGenes,Microarray_sig$hgnc_symbol)
+    Table4$Genes[i]<-paste(TargetGenes,collapse=" ")
+}
+
+write.table(Table4,file="~/PlacentalTRN/FinalResults/Table4EnrichedTFs.csv")
+
+```
+
+# Which Preterm birth genes were ALSO TFs?
+```{r}
+rownames(AllTFTable)<-AllTFTable$TF
+PTBTFs<-AllTFTable[intersect(Microarray_sig$hgnc_symbol,AllTFTable$TF),]
+
+PTBTFs<-merge(PTBTFs,Microarray_sig,by='row.names',all.x=T,all.y=F)
+
+write.table(PTBTFs,file="~/PlacentalTRN/FinalResults/PTB_TFs.csv")
+
+```
+
+# Make Culled network for Cytoscape
+```{r}
+### Fix nodes and Edges and Export to Cytoscape
+#Pull out Enriched TFs
+Edge_MA<-t(as.data.frame(rep(NA,7),ncols=7,nrows=1))
+colnames(Edge_MA)<-colnames(Edge)
+for(i in 1:length(EnrichedTFs)){
+  temp1<- subset(Edge, TF == EnrichedTFs[i])
+  rownames(temp1)<-temp1$targetGene
+  temp2<-temp1[intersect(Microarray_sig$hgnc_symbol,temp1$targetGene),]
+  rownames(temp2)<-paste(temp2$TF,temp2$targetGene)
+  Edge_MA<-rbind(Edge_MA,temp2)
+}
+
+##Pull out connections Between TFs that might match
+for(i in 1:length(EnrichedTFs)){
+  temp1<- subset(Edge, TF == EnrichedTFs[i])
+  rownames(temp1)<-temp1$targetGene
+  temp1$targetGene<-as.character(temp1$targetGene)
+  temp2<-temp1[intersect(EnrichedTFs,temp1$targetGene),]
+  rownames(temp2)<-paste(temp2$TF,temp2$targetGene)
+  Edge_MA<-rbind(Edge_MA,temp2)
+}
+
+Edge_MA<-na.omit(Edge_MA)
+
+Node_MA<-Node[c(unique(Edge_MA$TF),unique(Edge_MA$targetGene)),]
+
+Node_MA$PTB<-rep("NO",dim(Node_MA)[1])
+Node_MA$PTB[match(Microarray_sig$hgnc_symbol,Node_MA$Gene)]<-"YES"
+table(Node_MA$PTB)
+
+Node_MA<-merge(Node_MA,Microarray_sig,by.x="Gene",by.y="hgnc_symbol",all.x=T,all.y=F)
+
+
+Node_MA<-Node_MA[,-c(6,7,9,11)]
+
+
+Node_MA$LFCDir<-Node_MA$logFC
+Node_MA$LFCDir[Node_MA$LFCDir>0] <- "POS"
+Node_MA$LFCDir[Node_MA$LFCDir<=0] <- "NEG"
+table(Node_MA$LFCDir)
+
+
+Node_MA$Enriched<-rep("NO",dim(Node_MA)[1])
+Node_MA$Enriched[match(EnrichedTFs,Node_MA$Gene)]<-"YES"
+table(Node_MA$Enriched)
+
+
+write.csv(Node_MA,file="~/PlacentalTRN/FinalResults/PTBMicroarray_Node_9222020.csv")
+write.csv(Edge_MA,file="~/PlacentalTRN/FinalResults/PTBMicroarray_Edge_9222020.csv")
+
+```
+

@@ -1,0 +1,134 @@
+---
+title: "RunningModelHoldoutDataset&PreparingFullModel"
+author: "Alison Paquette"
+#date RMarkdown Generated: "9/29/2020"
+date originally Run: "November 2019"
+output: html_document
+---
+
+# Load Packages
+```{r}
+library(reshape)
+library(ggplot2)
+```
+
+
+1. Load Model & Fix Results
+```{r}
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/HoldoutData_LASSO.RData")
+FixLASSOMODEL<-function(LASSOMODEL){
+  TRNFiltTest_LASSO<-LASSOMODEL
+  TRNFiltTest_LASSO<-as.data.frame(TRNFiltTest_LASSO)
+  TRNFiltTest_LASSO$PVal<-as.numeric(paste0(TRNFiltTest_LASSO$PVal))
+  TRNFiltTest_LASSO$RSquared<-as.numeric(paste0(TRNFiltTest_LASSO$RSquared))
+  TRNFiltTest_LASSO$QVal<-p.adjust(TRNFiltTest_LASSO$PVal,method="BH",n=dim(TRNFiltTest_LASSO)[1])
+  colnames(TRNFiltTest_LASSO)<-paste(colnames(TRNFiltTest_LASSO),"_LASSO",sep="")
+  colnames(TRNFiltTest_LASSO)[4]<-"TG"
+  TRNFiltTest_LASSO
+}
+Holdout_LASSO<-FixLASSOMODEL(Holdout_LASSO)
+```
+
+
+
+```{r}
+
+###### Model Calculations
+ModelCalcs<-function(Model_LASSO){
+  c(length(which(Model_LASSO$PVal_LASSO<0.05)),#Number of Sig Correlations
+    length(which(Model_LASSO$PVal_LASSO<0.05))/dim(Model_LASSO)[1],
+    length(which(Model_LASSO$RSquared_LASSO>0.25)),
+    length(which(Model_LASSO$RSquared_LASSO>0.25))/dim(Model_LASSO)[1],
+    length(which(Model_LASSO$RSquared_LASSO>0.5))/dim(Model_LASSO)[1],
+    mean(Model_LASSO$RSquared_LASSO))
+}
+x<-ModelCalcs(Holdout_LASSO)
+length(which(Holdout_LASSO$RSquared_LASSO>0.25))/dim(Holdout_LASSO)[1]
+format(x, scientific=F)
+## Get Formatted
+Holdout_LASSO<-Holdout_LASSO[order(Holdout_LASSO$RSquared,decreasing=F),]
+Holdout_LASSO$Rank<-rev(1:length(Holdout_LASSO$RSquared))
+
+
+TopModel<-subset(Holdout_LASSO,RSquared_LASSO>0.5) #We had this idea that we were going to create a very high confidence model but we never actually executedthis
+RobustModel<-subset(Holdout_LASSO,RSquared_LASSO>0.25)
+BadModel<-subset(Holdout_LASSO,RSquared_LASSO<0.25)
+
+par(mfrow=c(1,1),mai=c(1,1,1,0.5))
+plot(Holdout_LASSO$Rank,Holdout_LASSO$RSquared,cex=0.5,pch=16,ylab="LASSO OOS R2",ylim=c(0,1),las=1)
+rect(0,0,12875,0.25,col="azure2",border = "azure1")
+points(BadModel$Rank,BadModel$RSquared,cex=0.5,pch=16,col="azure3")
+rect(0,0,12875,0.25,col="transparent",border = "black",lty=2)
+points(RobustModel$Rank,RobustModel$RSquared,cex=0.5,pch=16,col="cyan")
+points(TopModel$Rank,TopModel$RSquared,cex=0.75,pch=16,col="cyan4")
+#abline(h=0.5,lwd=2,lty=2)
+```
+
+
+
+# Check Correlations themselves
+
+# Load Correlations in holdout dataset 
+
+```{r}
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/HoldoutModel_CorrResults.RData")
+
+#Compare the correlations between the holdout and the testing dataset. SHould be vey simialar
+plot(Holdout_Cor$Cor_Train,Holdout_Cor$Cor_Test)
+plot(-log(Holdout_Cor$P_Train),-log(Holdout_Cor$P_Test))
+abline(v=-log(0.05),lwd=2,lty=3,col="red")
+abline(h=-log(0.05),lwd=2,lty=3,col="red")
+
+Holdout_Cor$QValue<-p.adjust(Holdout_Cor$P_Test,method="BH",n=length(Holdout_Cor$P_Test))
+
+
+table(Holdout_Cor$QValue>0.05)/dim(Holdout_Cor)[1]
+
+table(abs(Holdout_Cor$Cor_Test)<0.25)/dim(Holdout_Cor)[1]
+
+
+```
+
+#Make Density Plot for Manuscript
+
+```{r}
+x<-melt(Holdout_Cor)
+x<-subset(x,variable=="Cor_Train"|variable=="Cor_Test")
+
+
+
+#Make density plot-Need to fix this
+
+p<-ggplot(x) + geom_density(aes(x = value, fill = variable), alpha = 0.4)
+p<-p+scale_fill_brewer(palette="Dark2") #Set colors
+P<- p+theme(legend.position = "none")
+p<-p+ theme_bw(base_size=16) # Remove Ugly Grey rines
+p<-p + labs(x = "Pearson Correlation Coefficent")
+p<-p + scale_fill_discrete(name = "Dataset")
+p<-p+ geom_vline(aes(xintercept=-0.25),color="red", linetype="dashed", size=1)
+p+geom_vline(aes(xintercept=0.25),
+             color="red", linetype="dashed", size=1) # Add + LIne
+#plot(p)
+
+```
+
+
+
+# Prune Model.  Load the TF:TG list you used for the holdout dataset, then cut out the genes that you did not use in the full mode
+```{r}
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/TrainingTesting_ProcessedModelForHoldout.RData")
+
+ExcludedGenes<-as.character(BadModel$TG)
+RobustGenes<-as.character(RobustModel$TG)
+TopModelGenes<-as.character(TopModel$TG)
+
+RobustModel_TFList<-TFsList[RobustGenes]
+
+
+#save(RobustModel_TFList,file="~/PlacentalTRN/IntermediateData/RobustModelTFList.RData")
+```
+
+Run: Run Robust Model-Parellelized code to do correlations
+########################################################
+######### RScript /users/apaquett/PlacentalTRN/Codes/CodesForParellelization/ServerCode_Correlations_RobustModel.R ##############
+########################################################

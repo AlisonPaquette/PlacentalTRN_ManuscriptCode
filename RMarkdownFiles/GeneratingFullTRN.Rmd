@@ -1,0 +1,82 @@
+---
+title: "ProcessingFinalModel_Part 1"
+author: "Alison Paquette"
+date RMarkdown Created: "9/29/2020"
+Date Code Written: "November 2019"
+output: html_document
+---
+
+
+# Load Full Server Code w/Correlations in Full Model
+-Ran using "ServerCode_Correlations_RobustModel
+```{r}
+load("/users/apaquett/PlacentalTRN/IntermediateData/FullDatasetRobustModel_CorrResults.RData")
+```
+
+
+
+```{r}
+Cutoffs<-c((-0.25),0.25)
+Model<-subset(RobustTRN_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+Model<-subset(Model,Rank<16)
+
+
+hist(Model$Cor,breaks=100)
+
+table(Model$Cor<0)
+
+colnames(Model)[3]<-"targetGene"
+
+```
+
+# Make TF and TG tables and get model set up in the same way we did for the preliminary models
+```{r}
+MakeTFTable<-function(Model){
+  TRNFiltTest_TGs<-as.data.frame(table(Model$TF))
+  colnames(TRNFiltTest_TGs)<-c("TF","N_Targets")
+  rownames(TRNFiltTest_TGs)<-TRNFiltTest_TGs$TF
+  TRNFiltTest_TGs<-TRNFiltTest_TGs[order(TRNFiltTest_TGs$N_Targets,decreasing=T),]
+  TRNFiltTest_TGs
+}
+
+MakeTGTable<-function(Model){
+  TRNFiltTest_TFs<-as.data.frame(table(Model$targetGene))
+  colnames(TRNFiltTest_TFs)<-c("targetGene","N_TFs")
+  rownames(TRNFiltTest_TFs)<-TRNFiltTest_TFs$targetGene
+  # TRNFiltTest_TFs<-TRNFiltTest_TFs[order(TRNFiltTest_TFs$N_Targets,decreasing=T),]
+  TRNFiltTest_TFs
+}
+
+MakeTGList<-function(Model,TFList){
+
+  TRNFiltTest_TGsList<- list()
+  for(i in 1: nrow(TFList)){
+    TRNFiltTest_TGsList[[i]] <- Model[Model$TF==rownames(TFList)[i],]$targetGene
+  }
+  names(TRNFiltTest_TGsList) <- TFList$TF
+  TRNFiltTest_TGsList
+}
+
+MakeTFList<-function(Model,TGList){
+
+  TRNFiltTest_TFsList<- list()
+  for(i in 1: nrow(TGList)){
+    TRNFiltTest_TFsList[[i]] <- Model[Model$Target_Gene==rownames(TGList)[i],]$TF
+  }
+  names(TRNFiltTest_TFsList) <- TGList$Target_Gene
+  TRNFiltTest_TFsList
+}
+
+
+TF_Table<-MakeTFTable(Model)
+TG_Table<-MakeTGTable(Model)
+
+TF_List<-MakeTFList(Model,TG_Table)
+TG_List<-MakeTGList(Model,TF_Table)
+```
+
+# Save Genome Scale Model 
+```{r}
+save(Model,TF_List,TF_Table,TG_List,TG_Table,file="~/PlacentalTRN/IntermediateData/GenomeScaleModel6242020.RData")
+```
+

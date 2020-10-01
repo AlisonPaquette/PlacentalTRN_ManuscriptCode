@@ -1,0 +1,290 @@
+---
+title: "CombatAdjustmentAndDatasetCreation"
+author: "Alison Paquette"
+date: "9/23/2020"
+date created: "3/19/2019"
+output: html_document
+---
+
+#### A. Load Packages ####
+```{r}
+library(sva)
+library(RColorBrewer)
+library(caret)
+library(car)
+TRNColors<-brewer.pal(n = 8, name = "Dark2")
+```
+
+#### B. Load Input Data ####
+
+```{r}
+load("~/PlacentalTRN/IntermediateData/CandleRNASeq_VoomAdjusted.RData")
+load("~/PlacentalTRN/IntermediateData/MWHRNASeq_VoomAdjusted.RData")
+load("/local/users/apaquett/PlacentalTRN/PreprocessedData/Covar_All_3182019.RData")
+```
+
+
+#### C. Create Merged Data File ####
+
+```{r}
+Merged_Voom<-merge(CANDLE_Voom,MWH_Voom,by='row.names',all=F) #Only retaining the genes expressed in both datasets
+rownames(Merged_Voom)<-Merged_Voom[,1]
+Merged_Voom<-as.matrix(Merged_Voom[,-1])
+
+rownames(Covar_all)<-Covar_all$Sequencing_ID
+
+
+Data_PreComb<-as.matrix(Merged_Voom[,as.character(Covar_all$Sequencing_ID)])
+
+table(rownames(Covar_all)==colnames(Data_PreComb))
+```
+
+## D. Combat Batch Adjustment ####
+```{r}
+#1 Set Batch
+Covar_all$Cohort<-droplevels(Covar_all$Cohort)
+batch<-Covar_all$Cohort
+
+table(batch)
+
+#Create Model matrix for adjustment variables, including variable of interest.
+modcombat = model.matrix(~as.factor(MaternalRace_Group)+(GAWeeks),data=Covar_all)
+table(rownames(modcombat)==colnames(Data_PreComb))
+table(modcombat)
+DATA_ComBat= ComBat(dat=Data_PreComb, batch=batch, mod=modcombat)
+dim(DATA_ComBat)
+
+```
+
+
+## E. Evaluate ComBat Adjustment Efficacy ####
+
+```{r}
+#PCA: Determine proportion of variance and find assocations with Study Characteristics of interest
+# THis takes awhile
+PCobj =prcomp(t(Data_PreComb), scale=TRUE)
+PCs = PCobj$x
+PC.NBC =as.data.frame(PCs[,1:4])
+colnames(PC.NBC)<-c("PC1.nbc","PC2.nbc","PC3.nbc","PC4.nbc")
+PC.NBC$SampleIdentifier<-rownames(PC.NBC)
+propvar.NBC = summary(PCobj)$importance["Proportion of Variance", 1:4]
+
+x<-DATA_ComBat
+PCobj =prcomp(t(x), scale=TRUE)
+PCs = PCobj$x
+PC.BC =as.data.frame(PCs[,1:4])
+colnames(PC.BC)<-c("PC1.bc","PC2.bc","PC3.bc","PC4.bc")
+PC.BC$SampleIdentifier<-rownames(PC.BC)
+propvar.BC = summary(PCobj)$importance["Proportion of Variance", 1:4]
+merge1<-merge(PC.NBC,PC.BC,by ="SampleIdentifier",all=T)
+DATA<-merge(merge1,Covar_all,by.x="SampleIdentifier",by.y="Sequencing_ID",all=F)
+
+#Assocation with batch
+
+PCS<-DATA[,c(2:9)]
+
+
+EVAL<-as.data.frame(matrix(NA,nrow=8,ncol=4))
+for (i in 1:8){
+  AOV<-aov(PCS[,i]~Cohort,data=DATA)
+  EVAL[i,1] <-summary(AOV)[[1]][["Pr(>F)"]][1]
+  #AOV<-t.test(PCS[,i]~PretermGroup,data=DATA)
+  #EVAL[i,2] <-AOV$p.value
+}
+
+for (i in 1:8){
+  AOV<-aov(PCS[,i]~MaternalRace_Group,data=DATA)
+  EVAL[i,2] <-summary(AOV)[[1]][["Pr(>F)"]][1]
+  #AOV<-t.test(PCS[,i]~PretermGroup,data=DATA)
+  #EVAL[i,2] <-AOV$p.value
+}
+
+for (i in 1:8){
+  AOV<-aov(PCS[,i]~PTB,data=DATA)
+  EVAL[i,3] <-summary(AOV)[[1]][["Pr(>F)"]][1]
+  #AOV<-t.test(PCS[,i]~PretermGroup,data=DATA)
+  #EVAL[i,2] <-AOV$p.value
+}
+rownames(EVAL)<-colnames(PCS)
+EVAL
+
+for (i in 1:8){
+  AOV<-aov(PCS[,i]~Fetal_Sex,data=DATA)
+  EVAL[i,4] <-summary(AOV)[[1]][["Pr(>F)"]][1]
+  #AOV<-t.test(PCS[,i]~PretermGroup,data=DATA)
+  #EVAL[i,2] <-AOV$p.value
+}
+rownames(EVAL)<-colnames(PCS)
+EVAL
+
+
+
+
+par(mfrow=c(1,1))
+x<-rbind(propvar.NBC,propvar.BC)
+barplot(x,col=c(TRNColors[1],TRNColors[2]),beside=T,xlab="Principal Components",ylab="% of Variation",ylim=c(0,1))
+abline(h=0.1,lwd=2,lty=2)
+
+#Visualize PCA results
+Colors_Cohort<-as.character(DATA$Cohort)
+Colors_Cohort<-recode(Colors_Cohort,"'ECHO_Batch1'='#1B9E77';'ECHO_Batch2'='#D95F02';'ECHO_Batch3'='#7570B3';'MWH'='#E7298A'")
+
+Colors_Race<-as.character(DATA$MaternalRace_Group)
+Colors_Race<-recode(Colors_Race,"'Black'='#66A61E';'White'='#E6AB02';'Other'='#A6761D'")
+
+
+
+
+par(mfrow=c(2,2))
+plot(DATA$PC1.nbc,DATA$PC2.nbc,col=Colors_Cohort,pch=16,xlab="PC1",ylab="PC2")
+plot(DATA$PC1.bc,DATA$PC2.bc,col=Colors_Cohort,pch=16,xlab="PC1",ylab="PC2")
+
+plot(DATA$PC1.nbc,DATA$PC2.nbc,col=Colors_Race,pch=16,xlab="PC1",ylab="PC2")
+plot(DATA$PC1.bc,DATA$PC2.bc,col=Colors_Race,pch=16,xlab="PC1",ylab="PC2")
+
+```
+
+
+
+#Examine distribution of Gene expression in TFs
+```{r}
+TFs<-read.csv("~/RandomImpFiles/HumanTFs.csv")
+rownames(TFs)<-TFs[,1]
+TFs2<-subset(TFs,Is.TF.=="Yes")
+
+TFs<-as.character(TFs2[,1])
+
+x<-intersect(TFs,rownames(Merged_Voom))
+
+
+
+par(mfrow=c(2,1))#,mai= 1.02 0.82 0.82 0.42)
+
+boxplot(Data_PreComb[x,],which="all",main="No Correction",col=Colors_Cohort)
+boxplot(DATA_ComBat[x,],which="all",main="ComBat Adjustment",col=Colors_Cohort)
+
+```
+
+
+
+## F. Split Data into Training, Testing and Validation Cohort ####
+
+Here we also tested to ensure that the covarite data was even betwene these cohorts
+```{r}
+Covar_all<-Covar_all[colnames(DATA_ComBat),]
+
+colnames(DATA_ComBat)==rownames(Covar_all)
+
+######## Make Training Dataset, adjustnig for group (as case/control status)
+set.seed(100)
+
+##Set aside HOLD OUT DATA ###
+trainIndex <- createDataPartition(as.factor(Covar_all$Cohort),p = 0.8,
+                                  list = FALSE,
+                                  times = 1)
+
+Covar_Train1 <- Covar_all[ trainIndex,]
+Covar_HO<- Covar_all[-trainIndex,]
+
+
+x<-cbind(table(Covar_Train1$Cohort),table(Covar_HO$Cohort))
+chisq.test(x)
+
+x<-cbind(table(Covar_Train1$Delivery_Method),table(Covar_HO$Delivery_Method))
+chisq.test(x)
+
+cbind(table(Covar_Train1$Type),table(Covar_HO$Type))
+
+x<-cbind(table(Covar_Train1$Fetal_Sex),table(Covar_HO$Fetal_Sex))
+chisq.test(x)
+
+x<-cbind(table(Covar_Train1$MaternalRace_Group),table(Covar_HO$MaternalRace_Group))
+chisq.test(x)
+#not Sig
+cbind(summary(Covar_Train1$GAWeeks),summary(Covar_HO$GAWeeks))
+t.test(Covar_Train1$GAWeeks,Covar_HO$GAWeeks)
+#not sig
+
+cbind(summary(Covar_Train1$Birthweight),summary(Covar_HO$Birthweight))
+t.test(Covar_Train1$Birthweight,Covar_HO$Birthweight)
+#notsig
+
+###Set Aside Training & Testing Data
+set.seed(100)
+trainIndex2 <- createDataPartition(as.factor(Covar_Train1$Cohort),p = 0.8,
+                                   list = FALSE,
+                                   times = 1)
+
+Covar_Train <- Covar_Train1[ trainIndex2,]
+Covar_Test<- Covar_Train1[-trainIndex2,]
+
+
+x<-cbind(table(Covar_Train1$Delivery_Method),table(Covar_HO$Delivery_Method))
+chisq.test(x)
+
+#cbind(table(Covar_Train1$Type),table(Covar_HO$Type))
+
+x<-cbind(table(Covar_Train$Fetal_Sex),table(Covar_Test$Fetal_Sex))
+chisq.test(x)
+#p-value = 0.4015
+
+
+x<-cbind(table(Covar_Train$MaternalRace_Group),table(Covar_Test$MaternalRace_Group))
+chisq.test(x)
+#p-value = 0.4339
+
+cbind(summary(Covar_Train$GAWeeks),summary(Covar_Test$GAWeeks))
+t.test(Covar_Train$GAWeeks,Covar_HO$GAWeeks)
+#p-value = 0.6478
+
+cbind(summary(Covar_Train$Birthweight),summary(Covar_Test$Birthweight))
+t.test(Covar_Train$Birthweight,Covar_Test$Birthweight)
+#p-value = 0.3504
+
+
+```
+
+
+
+
+###Prepare Experssion Data
+
+# Based on the MotifDB code that paul generated, we we need to convert the ensemblIDs to gene ids
+```{r}
+library(AnnotationHub)
+hub <- AnnotationHub()
+edb <- hub[["AH60977"]]
+
+gnames<-keys(edb,keytype="GENEID")
+head(gnames)
+
+tx2gene<-select(edb, keys = gnames , keytype = "GENEID",
+                columns = c("GENEID","GENENAME"))
+
+Gene_Names<-merge(tx2gene,DATA_ComBat,by.x="GENEID",by.y='row.names',all.x=F,all.y=T)
+
+DATA_ComBat_GeneName<-Gene_Names[!duplicated(Gene_Names$GENENAME),]
+
+rownames(DATA_ComBat_GeneName)<-DATA_ComBat_GeneName$GENENAME
+DATA_ComBat_GeneName<-DATA_ComBat_GeneName[,-c(1:2)]
+
+DATA_ComBat_GeneName
+Exprs_all<-DATA_ComBat_GeneName
+
+#save(Exprs_all,Covar_all,file="~/PlacentalTRN/IntermediateData/ProcessedRNASequencingData6192020.RData")
+
+Exprs_Train<-DATA_ComBat_GeneName[,as.character(Covar_Train$Sequencing_ID)]
+Exprs_Test<- DATA_ComBat_GeneName[,as.character(Covar_Test$Sequencing_ID)]
+Exprs_HO<- DATA_ComBat_GeneName[,as.character(Covar_HO$Sequencing_ID)]
+
+table(colnames(Exprs_Train)==rownames(Covar_Train))
+table(colnames(Exprs_Test)==rownames(Covar_Test))
+table(colnames(Exprs_HO)==rownames(Covar_HO))
+
+#TrainingData<-save(Exprs_Train,Covar_Train,file="~/PlacentalTRN/IntermediateData/TrainingDataset_6192020.RData")
+#TestingData<-save(Exprs_Test,Covar_Test,file="~/PlacentalTRN/IntermediateData/TestingDataset_6192020.RData")
+#HOData<-save(Exprs_HO,Covar_HO,file="~/PlacentalTRN/IntermediateData/HoldoutDataset_6192020.RData")
+
+
+```
+

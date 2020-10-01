@@ -1,0 +1,198 @@
+---
+title: "Evaluating Model Parameters"
+author: "Alison Paquette"
+date Written: "September 2019"
+date Modified: "6/20/2020"
+date RMarkdown Created: "9/24/2020"
+output: html_document
+---
+
+#### A. Load Packages #####
+```{r}
+
+library(RColorBrewer)
+TRNColors<-brewer.pal(n = 9, name = "Set3")
+```
+=
+
+
+#### B. Load Data ####
+```{r}
+
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model1Testing_LASSO.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model2Testing_LASSO.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model3Testing_LASSO.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model4Testing_LASSO.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model5Testing_LASSO.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model6Testing_LASSO.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model7Testing_LASSO.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model8Testing_LASSO.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model9Testing_LASSO.RData")
+```
+
+Fix the fact that the numbers came out as characters and also do adjustment for multiple comparisons
+
+```{r}
+FixLASSOMODEL<-function(LASSOMODEL){
+TRNFiltTest_LASSO<-LASSOMODEL
+TRNFiltTest_LASSO<-as.data.frame(TRNFiltTest_LASSO)
+TRNFiltTest_LASSO$PVal<-as.numeric(paste0(TRNFiltTest_LASSO$PVal))
+TRNFiltTest_LASSO$RSquared<-as.numeric(paste0(TRNFiltTest_LASSO$RSquared))
+TRNFiltTest_LASSO$QVal<-p.adjust(TRNFiltTest_LASSO$PVal,method="bonferroni",n=dim(TRNFiltTest_LASSO)[1])
+colnames(TRNFiltTest_LASSO)<-paste(colnames(TRNFiltTest_LASSO),"_LASSO",sep="")
+colnames(TRNFiltTest_LASSO)[4]<-"TG"
+TRNFiltTest_LASSO
+}
+Model1_LASSO<-FixLASSOMODEL(Model1_LASSO)
+Model2_LASSO<-FixLASSOMODEL(Model2_LASSO)
+Model3_LASSO<-FixLASSOMODEL(Model3_LASSO)
+Model4_LASSO<-FixLASSOMODEL(Model4_LASSO)
+Model5_LASSO<-FixLASSOMODEL(Model5_LASSO)
+Model6_LASSO<-FixLASSOMODEL(Model6_LASSO)
+Model7_LASSO<-FixLASSOMODEL(Model7_LASSO)
+Model8_LASSO<-FixLASSOMODEL(Model8_LASSO)
+Model9_LASSO<-FixLASSOMODEL(Model9_LASSO)
+```
+
+#Calculate Accuracy of Model
+```{r}
+ModelDimensions = data.frame(matrix(vector(), 9, 6, dimnames=list(c(), c("NSigCorrelations","PercentSigCorrelations","OOSGreaterThan0.25","PercentOOS20.25","PercentOOSGreaterThan0.5","MeanOOSR2"))),stringsAsFactors=F)
+rownames(ModelDimensions)<-c("Model1","Model2","Model3","Model4","Model5","Model6","Model7","Model8","Model9")
+
+ModelCalcs<-function(Model_LASSO){
+c(length(which(Model_LASSO$PVal_LASSO<0.05)),#Number of Sig Correlations
+                         length(which(Model_LASSO$PVal_LASSO<0.05))/dim(Model_LASSO)[1],
+                         length(which(Model_LASSO$RSquared_LASSO>0.25)),
+                         length(which(Model_LASSO$RSquared_LASSO>0.25))/dim(Model_LASSO)[1],
+                         length(which(Model_LASSO$RSquared_LASSO>0.5))/dim(Model_LASSO)[1],
+                         mean(Model_LASSO$RSquared_LASSO))
+}
+ModelDimensions[1,]<-ModelCalcs(Model1_LASSO)
+ModelDimensions[2,]<-ModelCalcs(Model2_LASSO)
+ModelDimensions[3,]<-ModelCalcs(Model3_LASSO)
+ModelDimensions[4,]<-ModelCalcs(Model4_LASSO)
+ModelDimensions[5,]<-ModelCalcs(Model5_LASSO)
+ModelDimensions[6,]<-ModelCalcs(Model6_LASSO)
+ModelDimensions[7,]<-ModelCalcs(Model7_LASSO)
+ModelDimensions[8,]<-ModelCalcs(Model8_LASSO)
+ModelDimensions[9,]<-ModelCalcs(Model9_LASSO)
+
+```
+
+#Plot Results
+-Option 1 is similar to the way that seth did in hs paper. However it kind of obscures some of our results and I dont think it really conveys the data as clearly as the boxplot
+
+```{r}
+#Plotting Option 1
+plot(sort(Model1_LASSO$RSquared_LASSO,decreasing=T),pch=20, cex=0.75,ylim=c(0,1),col=TRNColors[1],ylab="OOS R2",xlab="Target Genes Ranked")
+#points(sort(Model2_LASSO$RSquared_LASSO,decreasing=T),pch=20, cex=0.5,col=TRNColors[2])
+#points(sort(Model4_LASSO$RSquared_LASSO,decreasing=T),pch=20, cex=0.5,col=TRNColors[4])
+#points(sort(Model5_LASSO$RSquared_LASSO,decreasing=T),pch=20, cex=0.5,col=TRNColors[5])
+#points(sort(Model6_LASSO$RSquared_LASSO,decreasing=T),pch=20, cex=0.5,col=TRNColors[6])
+points(sort(Model7_LASSO$RSquared_LASSO,decreasing=T),pch=20, cex=0.5,col=TRNColors[7])
+points(sort(Model8_LASSO$RSquared_LASSO,decreasing=T),pch=20, cex=0.5,col=TRNColors[8])
+points(sort(Model8_LASSO$RSquared_LASSO,decreasing=T),pch=20, cex=0.5,col=TRNColors[9])
+points(sort(Model3_LASSO$RSquared_LASSO,decreasing=T),pch=20, cex=1,col=TRNColors[3])
+abline(h=0.25,col="red",lty=2,lwd=2) #(4 x 6 inches)
+#Plotting Option 2
+
+boxplot(Model1_LASSO$RSquared_LASSO,
+        Model2_LASSO$RSquared_LASSO,
+        Model3_LASSO$RSquared_LASSO,
+        Model4_LASSO$RSquared_LASSO,
+        Model5_LASSO$RSquared_LASSO,
+        Model6_LASSO$RSquared_LASSO,
+        Model7_LASSO$RSquared_LASSO,
+        Model8_LASSO$RSquared_LASSO,
+        Model9_LASSO$RSquared_LASSO,
+        main="Accuracy",ylab="OOS R2",names=rownames(ModelDimensions),notch=T,col=TRNColors,las=2,ylim=c(0,1))
+abline(h=0.25,col="red",lty=2,lwd=2) #(4 x 6 inches)
+
+```
+
+
+#Calculate Statistical Differences between different models
+```{r}
+ANOVAINPUT<-rbind(cbind(Model1_LASSO$RSquared_LASSO,rep(rownames(ModelDimensions)[1],length(Model1_LASSO$RSquared_LASSO))),
+                  cbind(Model2_LASSO$RSquared_LASSO,rep(rownames(ModelDimensions)[2],length(Model2_LASSO$RSquared_LASSO))),
+                  cbind(Model3_LASSO$RSquared_LASSO,rep(rownames(ModelDimensions)[3],length(Model3_LASSO$RSquared_LASSO))),
+                  cbind(Model4_LASSO$RSquared_LASSO,rep(rownames(ModelDimensions)[4],length(Model4_LASSO$RSquared_LASSO))),
+                  cbind(Model5_LASSO$RSquared_LASSO,rep(rownames(ModelDimensions)[5],length(Model5_LASSO$RSquared_LASSO))),
+                  cbind(Model6_LASSO$RSquared_LASSO,rep(rownames(ModelDimensions)[6],length(Model6_LASSO$RSquared_LASSO))),
+                  cbind(Model7_LASSO$RSquared_LASSO,rep(rownames(ModelDimensions)[7],length(Model7_LASSO$RSquared_LASSO))),
+                  cbind(Model8_LASSO$RSquared_LASSO,rep(rownames(ModelDimensions)[8],length(Model8_LASSO$RSquared_LASSO))),
+                  cbind(Model9_LASSO$RSquared_LASSO,rep(rownames(ModelDimensions)[9],length(Model9_LASSO$RSquared_LASSO))))
+ANOVAINPUT<-as.data.frame(ANOVAINPUT)
+colnames(ANOVAINPUT)<-c("OOSR2","Model")
+table(ANOVAINPUT[,2])
+ANOVAINPUT$OOSR2<-as.numeric(paste0(ANOVAINPUT$OOSR2))
+model=lm(ANOVAINPUT$OOSR2~ANOVAINPUT$Model)
+ANOVA=aov(model)
+# Tukey test to study each pair of treatment :
+TUKEY <- TukeyHSD(x=ANOVA)
+
+TUKEY
+
+TUKEY
+
+# Tuckey test representation :
+plot(TUKEY , las=1 , col="brown")
+```
+
+
+# Lasso regerssion vs. random forest
+
+1. Load Random Forest model and Fix
+```{r}
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/Model1RF.RData")
+FixRFMODEL<-function(RFMODEL){
+  TRNFiltTest_LASSO<-RFMODEL
+  TRNFiltTest_LASSO<-as.data.frame(TRNFiltTest_LASSO)
+  TRNFiltTest_LASSO$PVal<-as.numeric(paste0(TRNFiltTest_LASSO$PVal))
+  TRNFiltTest_LASSO$RSquared<-as.numeric(paste0(TRNFiltTest_LASSO$RSquared))
+  TRNFiltTest_LASSO$QVal<-p.adjust(TRNFiltTest_LASSO$PVal,method="bonferroni",n=dim(TRNFiltTest_LASSO)[1])
+  colnames(TRNFiltTest_LASSO)<-paste(colnames(TRNFiltTest_LASSO),"_RF",sep="")
+  colnames(TRNFiltTest_LASSO)[4]<-"TG"
+  TRNFiltTest_LASSO
+}
+Model1_RF<-FixRFMODEL(Model1_RF)
+
+
+rownames(Model1_LASSO)<-Model1_LASSO$TG
+rownames(Model1_RF)<-Model1_RF$TG
+```
+
+
+# Compare the results between he 2 groups
+```{r}
+rownames(Model1_LASSO)<-Model1_LASSO$TG
+rownames(Model1_RF)<-Model1_RF$TG
+
+Model1<-merge(Model1_LASSO,Model1_RF,by='row.names',all=F)
+
+par(mfrow=c(1,2),mai=c(1,1,1,0.5))
+plot(Model1$RSquared_RF,Model1$RSquared_LASSO,cex=0.5,pch=16,col="white",ylab="LASSO OOS R2",xlab="Random Forest OOS R2",main="Correlation in Test Dataset")
+rect(0,0,0.25,0.25,col="azure3",border = "azure1")
+points(Model1$RSquared_RF,Model1$RSquared_LASSO,cex=0.5,pch=16,col="azure4")
+rect(0,0,0.25,0.25,col="transparent",border = "black",lty=2)
+
+ModelColors<-brewer.pal(8, "Set1")
+#boxplot(Model1$`RSquared _RF`,Model1$`RSquared _LASSO`,notch=T,main="Accuracy",ylab="OOS R2",names=c("Random Forest","Lasso"),col="azure4",ylim=c(0,1),las=1)
+#This doesnt look very good here
+
+plot(sort(Model1$RSquared_LASSO,decreasing=T),pch=20, cex=0.75,ylim=c(0,1),col=ModelColors[1],ylab="OOS R2",main="Target Genes Ranked")
+points(sort(Model1$RSquared_RF,decreasing=T),pch=20, cex=0.75,col=ModelColors[2])
+abline(h=0.25,col="azure4",lty=2,lwd=2)
+legend("topright",legend=c("Lasso","RandomForest"),cex=1,col=ModelColors[1:2],pch=16)
+
+cor.test(Model1$RSquared_RF,Model1$RSquared_LASSO)
+t.test(Model1$RSquared_RF,Model1$RSquared_LASSO)
+
+```
+
+Met with Nathan 11/18/2019 to Discuss these results
+
+
+We wnt to go with a threshodl of 0.250 i.e model 3
+-parameters look good
+random forst makes more sense

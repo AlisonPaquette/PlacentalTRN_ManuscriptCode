@@ -1,0 +1,71 @@
+---
+title: "PreparingModelforHoldoutDataset"
+author: "Alison Paquette"
+date originally Run: "November 2019" 
+#date RMarkdown Created: "9/29/2020"
+output: html_document
+---
+
+# Part 1: Combine Training and Testing Data and run Pearson Correlations
+```{r}
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/TrainingDataset_6192020.RData")
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/TestingDataset_6192020.RData")
+
+Exprs_TT<-as.data.frame(cbind(Exprs_Test,Exprs_Train))
+#save(Exprs_TT,file="/local/users/apaquett/PlacentalTRN/IntermediateData/TTDataset_6192020.RData")
+```
+
+
+############################################################################
+######## RScript ServerCode_PearsonEnhancerTTData.RData ###############
+##############################################################################
+
+# Filter Data using Model 3 cutoffs
+```{r}
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/EnhancerCorrelationsTrainingTestingData.RData")
+#######___Model 3 ############
+Cutoffs<-c((-0.25),0.25)
+
+Model<-subset(Enhancer_Cor,Cor<Cutoffs[1]|Cor>Cutoffs[2])
+Model<-subset(Model,Rank<16)
+hist(Enhancer_Cor$Cor,breaks=100)
+hist(Model$Cor,breaks=100)
+
+
+
+TGs<-as.data.frame(table(Model$Target_Gene))
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+TGs<-subset(TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+TFs<-as.data.frame(table(Model$TF))
+colnames(TFs)<-c("TF","N_Targets")
+rownames(TFs)<-TFs$TF
+
+TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TFsList[[i]] <- Model[Model$Target_Gene==rownames(TGs)[i],]$TF
+}
+names(TFsList) <-TGs$Target
+
+ModelDimensions<-c(dim(Model)[1], #N Interactoins
+                       length(unique(as.character(Model$TF))), #Number of TFs
+                       dim(TGs)[1], #Number of TGs
+                       median(TFs$N_Targets), #Median Number of TGs
+                       max(TFs$N_Targets)) # Maximum Module Size
+
+
+TFs<-as.data.frame(table(Model$TF))
+colnames(TFs)<-c("TF","N_Targets")
+rownames(TFs)<-TFs$TF
+
+TGsList<- list()
+for(i in 1: nrow(TFs)){
+  TGsList[[i]] <- Model[Model$TF==rownames(TFs)[i],]$Target_Gene
+}
+names(TGsList) <- TFs$TF
+
+#save(Model,TFsList,TGsList,TFs,TGs,file="~/PlacentalTRN/IntermediateData/TrainingTesting_ProcessedModelForHoldout.RData")
+
+```
+

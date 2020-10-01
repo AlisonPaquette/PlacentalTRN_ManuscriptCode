@@ -1,0 +1,96 @@
+---
+title: "MWH_RNA Sequencing Preprocessing"
+author: "Alison Paquette"
+date RMarkdown Generated: "9/23/2020"
+date originally rn: "3/19/2020"
+output: html_document
+---
+
+####################################################################################################
+##### Processing MWH Data
+##### Code Originally Written 3/19/2019
+
+#### A. Load Packages
+```{r}
+library(edgeR)
+library(tximport)
+library(limma)
+library(AnnotationHub)
+```
+
+# B. Import Kallisto Files using TX Import
+
+# This is the location in ISBs Khaleesi Server in my local directory
+```{r}
+dir<-"~/PlacentalTRN/PreprocessedData/Raw/"
+Files <- grep("output", list.files(dir),value=T)
+Names<- gsub("output_", "", Files)
+files <- file.path(dir, Files, "abundance.h5")
+```
+
+# Import and Convert Transcript level data into gene level data
+#Note: Because limma-voom does not use the offset matrix stored in  y$offset, they recommend using the scaled counts generated from abundances, either "scaledTPM" or "lengthScaledTPM"
+```{r}
+
+##Create Text to Gene File####
+hub <- AnnotationHub()
+edb <- hub[["AH60977"]]
+
+#library(EnsDb.Hsapiens.v86,ensembldb)
+gnames<-keys(edb,keytype="TXID")
+head(gnames)
+
+tx2gene<-select(edb, keys = gnames , keytype = "TXID",columns = c("TXID","GENEID"))
+
+
+#Import in Count Data
+LengthScaledTPM <- tximport(files, type = "kallisto",ignoreTxVersion = T, tx2gene = tx2gene,countsFromAbundance = "lengthScaledTPM")
+LengthScaledTPM<-LengthScaledTPM$counts
+colnames(LengthScaledTPM)<-Names
+```
+
+
+#### C. Load Covariate Data and Align with RNA Sequencing Data
+
+```{r}
+load("/local/users/apaquett/PlacentalTRN/PreprocessedData/Covar_All_3182019.RData") ##This is a harmonized covariate data file I built in Spring 209
+rownames(Covar_all)<-as.character(Covar_all$Sequencing_ID)
+
+Matched<-intersect(Covar_all$Sequencing_ID,colnames(LengthScaledTPM))
+
+Covar<-Covar_all[Matched,]
+LengthScaledTPM<-LengthScaledTPM[,Matched]
+```
+
+
+
+#### Filtering & Normalization
+```{r}
+y<-LengthScaledTPM
+y <- DGEList(y)
+
+#### D. Perform Gene Filtering
+F_Sex<-as.factor(Covar$Fetal_Sex)
+
+keep <- filterByExpr(y,group=F_Sex)
+y_Filtered <- y[keep, ]
+
+dim(y)
+dim(y_Filtered)
+
+#### E. Calculate Normalization Factors and VOOM Normalize Data
+y_Filtered  <- calcNormFactors(y_Filtered )
+
+#Design Matrix: What is your biological qustion
+y_Voom <- voom(y_Filtered,plot=T)
+
+MWH_Voom<-y_Voom$E
+#Factors<-y_Voom$weights
+
+plotMDS(MWH_Voom)
+
+
+#save(MWH_Voom,file="~/PlacentalTRN/IntermediateData/MWHRNASeqCOUNTS_VoomAdjusted.RData")
+```
+
+

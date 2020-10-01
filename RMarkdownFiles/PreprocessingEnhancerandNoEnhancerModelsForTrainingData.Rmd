@@ -1,0 +1,118 @@
+---
+title: "PreprocessingTrainingDatasetforTRN"
+author: "Alison Paquette"
+date: "9/23/2020"
+date Written: "September 2019"
+date Code Streamlined: "6/20/2020"
+output: html_document
+---
+
+The goal of this code is to take the Enhancer and No Enhaner base models that Paul generated in September 2019 and get them to a state where we can run pearson correlations within our training datset.  The actual correlations are run in parellel using a custom R script 
+
+
+#### B. Load Input Data ####
+```{r}
+load("/local/users/apaquett/PlacentalTRN/IntermediateData/TrainingDataset_6192020.RData")
+load("/local/users/apaquett/PlacentalTRN/PreprocessedData/EnhancerBaseTRN.RData")  #Note: Ignore all of the data in this model. This is just to extract the potential binding sites out of what pauls code is set up to run.
+colnames(EnhancerFullModel)[1]<-"tf"
+
+load("/local/users/apaquett/PlacentalTRN/PreprocessedData/NoEnhancerBaseTRN.RData")  #Note: Ignore all of the data in this model. This is just to extract the potential binding sites out of what pauls code is set up to run.
+colnames(NoEnhancerFullModel)[1]<-"tf"
+
+##This is fromt he Human TF DB (Lambert et al, 2018
+DBTFs<-read.csv("~/RandomImpFiles/HumanTFs.csv")
+rownames(DBTFs)<-DBTFs$HGNC.symbol
+DBTFs<-subset(DBTFs,Is.TF.=="Yes")
+DBTFs<-as.character(DBTFs[,2])
+```
+
+
+#### C. Make No Enhancer Model to Get Correlations ####
+
+```{r}
+TGs<-as.data.frame(table(NoEnhancerFullModel$targetGene))
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+
+TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TFsList[[i]] <- NoEnhancerFullModel[NoEnhancerFullModel$targetGene==rownames(TGs)[i],]$tf
+}
+names(TFsList) <-TGs$Target
+
+TFs<-as.data.frame(table(NoEnhancerFullModel$tf))
+colnames(TFs)<-c("TF","N_Targets")
+rownames(TFs)<-TFs$TF
+
+
+TGsList<- list()
+for(i in 1: nrow(TFs)){
+  TGsList[[i]] <- NoEnhancerFullModel[NoEnhancerFullModel$tf==rownames(TFs)[i],]$targetGene
+}
+names(TGsList) <- TFs$TF
+
+#Remove whatever discrepencies there were with the dummy dataset and this one
+MatchedTGs<-intersect(rownames(Exprs_Train),names(TFsList))
+TGs<-TGs[MatchedTGs,]
+TFsList<-TFsList[MatchedTGs]
+names(TGs)
+
+#We are including ONLY TFs defined by the Human TF Database (Lambert et al, 2018)
+MatchedTFs<-intersect(DBTFs,names(TGsList))
+TFs<-TFs[MatchedTFs,]
+TGsList<-TGsList[MatchedTFs]
+#save(TGsList,TFsList,TFs,TGs,file="~/PlacentalTRN/PreprocessedData/NoEnhancerProcessedModel.RData")
+
+```
+
+
+################################################################################################
+##  Run on Server: Rscript ServerCode_PearsonNoEnhancerTrainingData.R ##########################
+################################################################################################
+
+
+#### C. Make Enhancer Model to Get Correlations ####
+
+```{r}
+TGs<-as.data.frame(table(EnhancerFullModel$targetGene))
+colnames(TGs)<-c("Target","NTFs")
+rownames(TGs)<-TGs$Target
+#TGs<-subset(TRNFiltTest_TGs,NTFs>3)#For lasso regression, we need > 2 in matrix
+
+#Making these lists takes X (Started 3:40 PM; Probably took ~ 30 Minutes)
+TFsList<- list()
+for(i in 1: nrow(TGs)){
+  TFsList[[i]] <- EnhancerFullModel[EnhancerFullModel$targetGene==rownames(TGs)[i],]$tf
+}
+names(TFsList) <-TGs$Target
+
+
+TFs<-as.data.frame(table(EnhancerFullModel$tf))
+colnames(TFs)<-c("TF","N_Targets")
+rownames(TFs)<-TFs$TF
+
+
+TGsList<- list()
+for(i in 1: nrow(TFs)){
+  TGsList[[i]] <- EnhancerFullModel[EnhancerFullModel$tf==rownames(TFs)[i],]$targetGene
+}
+names(TGsList) <- TFs$TF
+
+#Remove whatever discrepencies there were with the dummy dataset and this one
+MatchedTGs<-intersect(rownames(Exprs_Train),names(TFsList))
+TGs<-TGs[MatchedTGs,]
+TFsList<-TFsList[MatchedTGs]
+names(TGs)
+
+#We are including ONLY TFs defined by the Human TF Database (Lambert et al, 2018)
+MatchedTFs<-intersect(DBTFs,names(TGsList))
+TFs<-TFs[MatchedTFs,]
+TGsList<-TGsList[MatchedTFs]
+#save(TGsList,TFsList,TFs,TGs,file="~/PlacentalTRN/PreprocessedData/EnhancerProcessedModel.RData")
+```
+
+
+
+################################################################################################
+##  Run on Server: Rscript ServerCode_PearsonEnhancerTrainingData.R ##########################
+################################################################################################
